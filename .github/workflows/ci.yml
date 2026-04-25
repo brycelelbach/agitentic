@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: shellcheck (scripts)
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          # Lint every bundled skill script. Scripts have no extension
+          # but are recognised by their #! line, so feed them all.
+          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
+          if (( ${#files[@]} == 0 )); then
+            echo "no scripts found under plugins/*/skills/*/scripts/"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "==> shellcheck $f"
+            shellcheck -x "$f"
+          done
+
+      - name: bash -n (scripts)
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
+          for f in "${files[@]}"; do
+            echo "==> bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Scripts are executable
+        run: |
+          set -euo pipefail
+          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
+          fail=0
+          for f in "${files[@]}"; do
+            if [[ ! -x "$f" ]]; then
+              echo "::error file=$f::script is not executable (chmod +x)"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+      - name: Validate plugin / marketplace manifests
+        run: |
+          set -euo pipefail
+          for f in .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json; do
+            echo "==> jq . $f"
+            jq -e . "$f" >/dev/null
+          done
+          # marketplace.json must have name, owner.name, plugins[]
+          jq -e '.name and .owner.name and (.plugins | type == "array" and length > 0)' \
+            .claude-plugin/marketplace.json >/dev/null
+          # each plugin manifest must have name, version, description
+          for f in plugins/*/.claude-plugin/plugin.json; do
+            jq -e '.name and .version and .description' "$f" >/dev/null
+          done
+
+      - name: Validate agentskills.io skills
+        run: python3 .github/validate_skills.py
