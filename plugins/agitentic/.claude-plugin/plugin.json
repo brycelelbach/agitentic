@@ -1,0 +1,5 @@
+{
+  "name": "agitentic",
+  "version": "0.1.0",
+  "description": "Agentic git/GitHub helpers. Ships the `agitentic:git-fork` skill: fork a repo and clone it locally with upstream/fork remotes wired up."
+}

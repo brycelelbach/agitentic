@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# git-fork — fork a GitHub repo, clone the upstream locally, and
+# configure `upstream` and `fork` remotes.
+#
+# Usage:
+#   git-fork <repo> [account]
+#
+#   <repo>    A GitHub repository as "owner/name", or a GitHub HTTPS / SSH URL.
+#   [account] The GitHub user or organization to fork into. Defaults to the
+#             currently authenticated `gh` user.
+#
+# Result:
+#   ./<name>/  cloned from <repo> with two remotes:
+#                upstream → original repo (local default branch tracks it)
+#                fork     → github.com/<account>/<name>
+#
+# Requires: git, gh (https://cli.github.com), authenticated.
+
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: git-fork <repo> [account]
+
+  <repo>    "owner/name", or a GitHub https/ssh URL.
+  [account] Destination owner for the fork. Defaults to the authenticated
+            gh user.
+
+Clones <repo> into ./<name> with two remotes:
+  upstream → original repo (local default branch tracks upstream)
+  fork     → github.com/<account>/<name>
+EOF
+  exit 2
+}
+
+case "${1:-}" in -h|--help) usage ;; esac
+(( $# >= 1 && $# <= 2 )) || usage
+
+repo_arg="$1"
+account="${2:-}"
+
+command -v git >/dev/null 2>&1 || { echo "git-fork: 'git' is required" >&2; exit 1; }
+command -v gh  >/dev/null 2>&1 || { echo "git-fork: 'gh' (GitHub CLI) is required" >&2; exit 1; }
+
+# Normalise the repo argument to "owner/name".
+slug="${repo_arg%.git}"
+case "$slug" in
+  git@github.com:*)        slug="${slug#git@github.com:}" ;;
+  ssh://git@github.com/*)  slug="${slug#ssh://git@github.com/}" ;;
+  https://github.com/*)    slug="${slug#https://github.com/}" ;;
+  http://github.com/*)     slug="${slug#http://github.com/}" ;;
+esac
+slug="${slug%/}"
+if [[ "$slug" != */* || "$slug" == */*/* ]]; then
+  echo "git-fork: cannot parse '$repo_arg' as <owner>/<name>" >&2
+  exit 1
+fi
+upstream_owner="${slug%%/*}"
+repo_name="${slug#*/}"
+
+if [[ -z "$account" ]]; then
+  account="$(gh api user --jq .login)"
+fi
+
+if [[ -e "$repo_name" ]]; then
+  echo "git-fork: ./$repo_name already exists; refusing to overwrite" >&2
+  exit 1
+fi
+
+upstream_url="https://github.com/${upstream_owner}/${repo_name}.git"
+fork_url="https://github.com/${account}/${repo_name}.git"
+
+echo "==> Cloning ${upstream_owner}/${repo_name} (remote: upstream)"
+git clone -o upstream "$upstream_url" "$repo_name"
+
+if [[ "$account" == "$upstream_owner" ]]; then
+  echo "==> Skipping fork: account '$account' is the upstream owner"
+else
+  echo "==> Forking ${upstream_owner}/${repo_name} → ${account}/${repo_name}"
+  authed_user="$(gh api user --jq .login)"
+  if [[ "$account" == "$authed_user" ]]; then
+    gh repo fork "${upstream_owner}/${repo_name}" --clone=false >/dev/null
+  else
+    gh repo fork "${upstream_owner}/${repo_name}" --clone=false --org "$account" >/dev/null
+  fi
+fi
+
+echo "==> Adding fork remote → ${fork_url}"
+git -C "$repo_name" remote add fork "$fork_url"
+
+echo "==> Done."
+git -C "$repo_name" remote -v
