@@ -9,6 +9,9 @@ shipped as a Claude Code plugin.
 - **`agitentic:git-fork`** — fork a GitHub repository and clone it with
   the contributor-style two-remote layout. The local default branch
   tracks `upstream/<default>`; a `fork` remote points at your fork.
+- **`agitentic:git-clone`** — clone a repo locally with the same
+  two-remote layout, against an **existing** fork (no fork creation, no
+  repo-settings changes).
 - **`agitentic:git-sync`** — fetch `upstream/<branch>` and propagate it
   to local `<branch>` and `fork/<branch>`. Fast-forward by default;
   `--force` allows hard-reset + force-push. Branch defaults to
@@ -39,6 +42,7 @@ You can call them directly:
 
 ```bash
 plugins/agitentic/skills/git-fork/scripts/git-fork     <repo> [account] [directory]
+plugins/agitentic/skills/git-clone/scripts/git-clone   <repo> [account] [directory]
 plugins/agitentic/skills/git-sync/scripts/git-sync     [--branch <branch>] [--force]
 plugins/agitentic/skills/git-create/scripts/git-create <name> [account] [directory]
 ```
@@ -47,9 +51,11 @@ Or drop them on your `$PATH` to make them `git` subcommands:
 
 ```bash
 cp plugins/agitentic/skills/git-fork/scripts/git-fork     ~/bin/git-fork
+cp plugins/agitentic/skills/git-clone/scripts/git-clone   ~/bin/git-clone
 cp plugins/agitentic/skills/git-sync/scripts/git-sync     ~/bin/git-sync
 cp plugins/agitentic/skills/git-create/scripts/git-create ~/bin/git-create
 git fork brevdev/brev-cli
+git clone brevdev/brev-cli
 git sync
 git create my-tool
 ```
@@ -73,6 +79,33 @@ $ git-fork brevdev/brev-cli
 ==> Cloning brevdev/brev-cli (remote: upstream)
 ==> Forking brevdev/brev-cli → robobryce/brev-cli
 ==> Applying repo settings to robobryce/brev-cli
+==> Adding fork remote → https://github.com/robobryce/brev-cli.git
+==> Done.
+fork      https://github.com/robobryce/brev-cli.git (fetch)
+fork      https://github.com/robobryce/brev-cli.git (push)
+upstream  https://github.com/brevdev/brev-cli.git (fetch)
+upstream  https://github.com/brevdev/brev-cli.git (push)
+```
+
+### `git-clone <repo> [account] [directory]`
+
+- `<repo>` — `owner/name`, or a GitHub HTTPS / SSH URL. The upstream
+  repo.
+- `[account]` — owner of the existing fork. Defaults to the
+  authenticated `gh` user. Pass `""` to use the default while still
+  specifying `[directory]`.
+- `[directory]` — local directory to clone into. Defaults to the repo
+  name.
+
+Unlike `git-fork`, this does not create a fork or apply repo settings —
+the fork must already exist on GitHub.
+
+Example:
+
+```bash
+$ git-clone brevdev/brev-cli
+==> Verifying fork robobryce/brev-cli exists
+==> Cloning brevdev/brev-cli into ./brev-cli (remote: upstream)
 ==> Adding fork remote → https://github.com/robobryce/brev-cli.git
 ==> Done.
 fork      https://github.com/robobryce/brev-cli.git (fetch)
