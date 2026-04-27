@@ -59,6 +59,9 @@ The script:
 5. Pushes `main` to `origin`.
 6. Applies repo settings via `gh repo edit` (see "Configuration"
    below).
+7. Enables dependabot alerts, dependabot automated security updates,
+   and CodeQL default scanning (each toggleable via `[security]` in
+   `~/.agitentic`). Failures here are warned-about, not fatal.
 
 The script refuses to overwrite an existing `./<directory>`, and fails
 loudly if the GitHub repo already exists.
@@ -83,6 +86,16 @@ File format is git config (INI-like):
 Keys map directly to `gh repo edit` flags. Built-in defaults apply for
 keys not in the file, so users can override individual settings without
 re-specifying the rest.
+
+Security settings live in a separate `[security]` section. All three
+default to `true`; set any to `false` to skip that step:
+
+```ini
+[security]
+    dependabot-alerts = true
+    dependabot-security-updates = true
+    codeql-default-setup = true
+```
 
 ## Examples
 
