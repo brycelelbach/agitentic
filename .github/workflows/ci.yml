@@ -1,5 +1,9 @@
 name: CI
 
+# Mirrors ./test.bash locally — each job installs the prerequisites it
+# needs and then delegates to a single ./test.bash flag, so there is one
+# source of truth for "what counts as passing tests."
+
 on:
   push:
     branches: [main]
@@ -16,61 +20,42 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y shellcheck jq
 
-      - name: shellcheck (scripts)
+      - name: ./test.bash --lint
+        run: ./test.bash --lint
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Configure git identity for fixture tests
         run: |
-          set -euo pipefail
-          shopt -s globstar nullglob
-          # Lint every bundled skill script. Scripts have no extension
-          # but are recognised by their #! line, so feed them all.
-          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
-          if (( ${#files[@]} == 0 )); then
-            echo "no scripts found under plugins/*/skills/*/scripts/"
-            exit 1
-          fi
-          for f in "${files[@]}"; do
-            echo "==> shellcheck $f"
-            shellcheck --source-path=SCRIPTDIR -x "$f"
-          done
+          git config --global user.email ci@example.com
+          git config --global user.name "CI"
 
-      - name: bash -n (scripts)
+      - name: ./test.bash --unit
+        run: ./test.bash --unit
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
         run: |
-          set -euo pipefail
-          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
-          for f in "${files[@]}"; do
-            echo "==> bash -n $f"
-            bash -n "$f"
-          done
+          VERSION=8.18.4
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
 
-      - name: Scripts are executable
-        run: |
-          set -euo pipefail
-          mapfile -d '' files < <(find plugins -type f -path '*/scripts/*' -print0)
-          fail=0
-          for f in "${files[@]}"; do
-            if [[ ! -x "$f" ]]; then
-              echo "::error file=$f::script is not executable (chmod +x)"
-              fail=1
-            fi
-          done
-          exit "$fail"
-
-      - name: Validate plugin / marketplace manifests
-        run: |
-          set -euo pipefail
-          for f in .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json; do
-            echo "==> jq . $f"
-            jq -e . "$f" >/dev/null
-          done
-          # marketplace.json must have name, owner.name, plugins[]
-          jq -e '.name and .owner.name and (.plugins | type == "array" and length > 0)' \
-            .claude-plugin/marketplace.json >/dev/null
-          # each plugin manifest must have name, version, description
-          for f in plugins/*/.claude-plugin/plugin.json; do
-            jq -e '.name and .version and .description' "$f" >/dev/null
-          done
-
-      - name: Validate agentskills.io skills
-        run: python3 .github/validate_skills.py
+      - name: ./test.bash --secrets
+        run: ./test.bash --secrets
