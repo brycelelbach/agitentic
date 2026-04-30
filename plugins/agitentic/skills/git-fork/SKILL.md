@@ -71,11 +71,13 @@ The script refuses to overwrite an existing `./<directory>`.
 
 ## Configuration: `~/.agitentic`
 
-Fork repo settings are read from a `[fork]` section in `~/.agitentic`
-(or `$AGITENTIC_CONFIG` if set). The file uses git config format:
+Fork repo settings are read from the `[repo]` section of `~/.agitentic`
+(or `$AGITENTIC_CONFIG` if set). The same section is used by
+`agitentic:git-create`, so a single config file controls both skills.
+File format is git config (INI-like):
 
 ```ini
-[fork]
+[repo]
     delete-branch-on-merge = true
     enable-wiki = false
     enable-projects = false
@@ -84,11 +86,9 @@ Fork repo settings are read from a `[fork]` section in `~/.agitentic`
     enable-rebase-merge = true
 ```
 
-Keys map directly to `gh repo edit` flags (the leading `--` is added
-by the script). Values must be valid for the corresponding flag —
-booleans (`true`/`false`) for the flags above; strings for flags like
-`description`. Built-in defaults apply for any key not in the file, so
-users can override individual settings without re-specifying the rest.
+Keys map directly to `gh repo edit` flags. Built-in defaults apply for
+keys not in the file, so users can override individual settings without
+re-specifying the rest.
 
 If `~/.agitentic` doesn't exist, the built-in defaults are used.
 
