@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# Stub `gh` used by the test harness. Handles the tiny subset of the
+# GitHub CLI that the agitentic skill scripts actually invoke:
+#
+#   gh api user --jq .login
+#   gh repo create <slug> --public
+#   gh repo fork   <slug> --clone=false [--org <owner>]
+#   gh repo edit   <slug> [--key=value ...]
+#   gh repo view   <slug> --json name
+#
+# Configuration (env):
+#   STUB_GH_USER        login returned by `gh api user --jq .login`.
+#                       Default: "testuser".
+#   STUB_GH_BARE_ROOT   directory where synthesized bare repos live.
+#                       `gh repo create` initialises a bare repo under it
+#                       at <slug>.git; `gh repo fork` clones the upstream
+#                       bare repo to <fork_slug>.git. Required for
+#                       create/fork; fork also requires upstream to
+#                       already exist under the root.
+#   STUB_GH_MISSING     comma-separated slugs that `gh repo view` should
+#                       report as missing (404). Anything not listed is
+#                       treated as existing.
+#   STUB_GH_LOG         append one line per invocation here. Tests
+#                       inspect this to verify the scripts called gh
+#                       with the expected arguments.
+#
+# Any subcommand not listed above exits non-zero so unexpected gh usage
+# fails loudly.
+
+set -euo pipefail
+
+log_line() {
+  if [[ -n "${STUB_GH_LOG:-}" ]]; then
+    printf 'gh %s\n' "$*" >> "$STUB_GH_LOG"
+  fi
+}
+
+die() {
+  echo "stub gh: $*" >&2
+  exit 1
+}
+
+log_line "$*"
+
+case "${1:-}" in
+  api)
+    shift
+    # The scripts only use `gh api user --jq .login`.
+    if [[ "${1:-}" == "user" && "${2:-}" == "--jq" && "${3:-}" == ".login" ]]; then
+      printf '%s\n' "${STUB_GH_USER:-testuser}"
+    else
+      die "unsupported 'gh api $*'"
+    fi
+    ;;
+
+  repo)
+    shift
+    sub="${1:-}"; shift || true
+    case "$sub" in
+      create)
+        # gh repo create <slug> --public [--other...]
+        slug="${1:-}"
+        [[ -n "$slug" ]] || die "repo create: missing slug"
+        [[ -n "${STUB_GH_BARE_ROOT:-}" ]] || die "STUB_GH_BARE_ROOT not set"
+        bare="$STUB_GH_BARE_ROOT/$slug.git"
+        [[ -e "$bare" ]] && die "repo create: $slug already exists at $bare"
+        mkdir -p "$bare"
+        git init -q --bare "$bare"
+        git -C "$bare" symbolic-ref HEAD refs/heads/main
+        ;;
+
+      fork)
+        # gh repo fork <slug> --clone=false [--org <owner>]
+        upstream_slug="${1:-}"; shift || true
+        [[ -n "$upstream_slug" ]] || die "repo fork: missing slug"
+        org=""
+        while (( $# )); do
+          case "$1" in
+            --org) org="${2:-}"; shift 2 ;;
+            --clone*) shift ;;  # --clone=false or --clone (ignored by stub)
+            *) shift ;;
+          esac
+        done
+        [[ -n "${STUB_GH_BARE_ROOT:-}" ]] || die "STUB_GH_BARE_ROOT not set"
+        [[ -z "$org" ]] && org="${STUB_GH_USER:-testuser}"
+        fork_name="${upstream_slug#*/}"
+        fork_slug="$org/$fork_name"
+        upstream_bare="$STUB_GH_BARE_ROOT/$upstream_slug.git"
+        fork_bare="$STUB_GH_BARE_ROOT/$fork_slug.git"
+        [[ -d "$upstream_bare" ]] || die "repo fork: upstream $upstream_slug not seeded at $upstream_bare"
+        [[ -e "$fork_bare" ]] && die "repo fork: $fork_slug already exists"
+        git clone -q --bare "$upstream_bare" "$fork_bare"
+        ;;
+
+      edit)
+        # gh repo edit <slug> --key=value ...
+        # Arguments already logged via log_line at entry; nothing else to do.
+        : "${1:?repo edit: missing slug}"
+        ;;
+
+      view)
+        # gh repo view <slug> --json name
+        slug="${1:-}"
+        [[ -n "$slug" ]] || die "repo view: missing slug"
+        IFS=',' read -ra missing <<< "${STUB_GH_MISSING:-}"
+        for m in "${missing[@]}"; do
+          if [[ -n "$m" && "$m" == "$slug" ]]; then
+            # Mimic gh's 404 behavior: non-zero exit, stderr message.
+            echo "GraphQL: Could not resolve to a Repository with the name '$slug'" >&2
+            exit 1
+          fi
+        done
+        printf '{"name":"%s"}\n' "${slug#*/}"
+        ;;
+
+      *)
+        die "unsupported 'gh repo $sub'"
+        ;;
+    esac
+    ;;
+
+  *)
+    die "unsupported 'gh $*'"
+    ;;
+esac
