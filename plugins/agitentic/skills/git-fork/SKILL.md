@@ -34,26 +34,31 @@ Do **not** use this skill when:
 Run the bundled script:
 
 ```
-scripts/git-fork <repo> [account] [directory]
+scripts/git-fork <repo> [name] [account] [directory]
 ```
 
 - `<repo>` (required) — the repository to fork. Accepts `owner/name` or
   any GitHub HTTPS / SSH URL (`https://github.com/owner/name`,
   `git@github.com:owner/name.git`, etc.).
+- `[name]` (optional) — the name to use for the fork on GitHub (and
+  the default local directory). Defaults to the upstream repo name.
+  Pass `""` to use the default while still specifying `[account]` or
+  `[directory]`.
 - `[account]` (optional) — the destination owner for the fork. Defaults
   to the currently authenticated `gh` user. Pass `""` to use the
   default while still specifying `[directory]`.
 - `[directory]` (optional) — local directory to clone into. Defaults
-  to the repo name.
+  to `[name]`.
 
 The script:
 
 1. Clones `<repo>` into `./<directory>` with the original as `upstream`.
    The local default branch tracks `upstream/<default>`.
 2. Forks `<repo>` to `<account>/<name>` via `gh repo fork`. If
-   `<account>` is the upstream owner, the fork step is skipped. If
+   `<account>/<name>` matches the upstream, the fork step is skipped. If
    `<account>` is not the authenticated user, `--org <account>` is used,
-   so the caller must have permission to fork into that org.
+   so the caller must have permission to fork into that org. If `<name>`
+   differs from the upstream repo name, `--fork-name <name>` is used.
 3. Applies repo settings to the fork via `gh repo edit` (skipped if the
    fork step was skipped). Defaults:
    - `delete-branch-on-merge=true`
@@ -112,16 +117,22 @@ Run, from the directory where the user wants the clone to land:
 scripts/git-fork brevdev/brev-cli
 ```
 
+User: "Fork nvidia/cccl as autocuda-cccl"
+
+```
+scripts/git-fork nvidia/cccl autocuda-cccl
+```
+
 User: "Fork it into the acme org"
 
 ```
-scripts/git-fork brevdev/brev-cli acme
+scripts/git-fork brevdev/brev-cli "" acme
 ```
 
 User: "Fork brevdev/brev-cli into ~/work/brev"
 
 ```
-cd ~/work && scripts/git-fork brevdev/brev-cli "" brev
+cd ~/work && scripts/git-fork brevdev/brev-cli "" "" brev
 ```
 
 After the script returns, show the user `git -C <directory> remote -v`

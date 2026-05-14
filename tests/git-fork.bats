@@ -79,7 +79,7 @@ gh_log_matches() {
 
 @test "git-fork honours [account] and forks into an org via --org" {
   seed_bare_repo "other/thing"
-  run "$GIT_FORK" other/thing myorg my-dir
+  run "$GIT_FORK" other/thing "" myorg my-dir
   [ "$status" -eq 0 ]
 
   [ -d "$BARE_ROOT/myorg/thing.git" ]
@@ -91,8 +91,70 @@ gh_log_matches() {
   [ "$(gh_log_matches '^gh repo fork other/thing --clone=false --org myorg$')" -eq 1 ]
 }
 
+@test "git-fork honours [name] and forks under a custom name via --fork-name" {
+  run "$GIT_FORK" orig/repo my-fork
+  [ "$status" -eq 0 ]
+
+  # Fork bare materialised under the custom name.
+  [ -d "$BARE_ROOT/testuser/my-fork.git" ]
+  [ ! -d "$BARE_ROOT/testuser/repo.git" ]
+
+  # Local clone directory defaults to [name].
+  [ -d "$WORK/my-fork/.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.upstream.url)" = "https://github.com/orig/repo.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.fork.url)"     = "https://github.com/testuser/my-fork.git" ]
+
+  # --fork-name flag should appear on the fork call.
+  [ "$(gh_log_matches '^gh repo fork orig/repo --clone=false --fork-name my-fork$')" -eq 1 ]
+  # Settings/security applied to the renamed fork.
+  [ "$(gh_log_matches '^gh repo edit testuser/my-fork ')" -eq 1 ]
+  [ "$(gh_log_matches '/repos/testuser/my-fork/vulnerability-alerts')" -eq 1 ]
+}
+
+@test "git-fork combines [name] and [account] (--fork-name + --org)" {
+  run "$GIT_FORK" orig/repo my-fork myorg
+  [ "$status" -eq 0 ]
+
+  [ -d "$BARE_ROOT/myorg/my-fork.git" ]
+  [ -d "$WORK/my-fork/.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.fork.url)" = "https://github.com/myorg/my-fork.git" ]
+
+  # Both --org and --fork-name must appear on the fork call.
+  [ "$(gh_log_matches '^gh repo fork orig/repo --clone=false --org myorg --fork-name my-fork$')" -eq 1 ]
+}
+
+@test "git-fork [name] with explicit [directory] separates the two" {
+  run "$GIT_FORK" orig/repo my-fork "" custom-dir
+  [ "$status" -eq 0 ]
+
+  # Fork on GitHub uses [name]; local clone uses [directory].
+  [ -d "$BARE_ROOT/testuser/my-fork.git" ]
+  [ -d "$WORK/custom-dir/.git" ]
+  [ ! -d "$WORK/my-fork" ]
+  [ "$(git -C "$WORK/custom-dir" config --get remote.fork.url)" = "https://github.com/testuser/my-fork.git" ]
+}
+
+@test "git-fork empty [name] falls back to the upstream repo name" {
+  run "$GIT_FORK" orig/repo "" "" custom-dir
+  [ "$status" -eq 0 ]
+  # No --fork-name when name matches the upstream.
+  [ "$(gh_log_matches '^gh repo fork orig/repo --clone=false$')" -eq 1 ]
+  [ -d "$BARE_ROOT/testuser/repo.git" ]
+  [ -d "$WORK/custom-dir/.git" ]
+}
+
+@test "git-fork allows forking the upstream owner under a different name" {
+  # account == upstream owner but name differs → still a real fork
+  # (account != authed user, so --org also appears).
+  run "$GIT_FORK" orig/repo renamed orig
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Skipping fork"* ]]
+  [ -d "$BARE_ROOT/orig/renamed.git" ]
+  [ "$(gh_log_matches '^gh repo fork orig/repo --clone=false --org orig --fork-name renamed$')" -eq 1 ]
+}
+
 @test "git-fork short-circuits when [account] is the upstream owner" {
-  run "$GIT_FORK" orig/repo orig
+  run "$GIT_FORK" orig/repo "" orig
   [ "$status" -eq 0 ]
   [[ "$output" == *"Skipping fork"* ]]
 
