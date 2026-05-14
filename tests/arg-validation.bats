@@ -79,7 +79,7 @@ teardown() {
 }
 
 @test "git-fork rejects too many positional args" {
-  run "$GIT_FORK" a b c d
+  run "$GIT_FORK" a b c d e
   [ "$status" -eq 2 ]
   [[ "$output" == *"Usage: git-fork"* ]]
 }
@@ -107,7 +107,7 @@ teardown() {
 }
 
 @test "git-clone rejects too many positional args" {
-  run "$GIT_CLONE" a b c d
+  run "$GIT_CLONE" a b c d e
   [ "$status" -eq 2 ]
   [[ "$output" == *"Usage: git-clone"* ]]
 }

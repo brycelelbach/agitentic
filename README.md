@@ -41,8 +41,8 @@ Each skill is a thin wrapper around a self-contained shell script.
 You can call them directly:
 
 ```bash
-plugins/agitentic/skills/git-fork/scripts/git-fork     <repo> [account] [directory]
-plugins/agitentic/skills/git-clone/scripts/git-clone   <repo> [account] [directory]
+plugins/agitentic/skills/git-fork/scripts/git-fork     <repo> [name] [account] [directory]
+plugins/agitentic/skills/git-clone/scripts/git-clone   <repo> [name] [account] [directory]
 plugins/agitentic/skills/git-sync/scripts/git-sync     [--branch <branch>] [--force]
 plugins/agitentic/skills/git-create/scripts/git-create <name> [account] [directory]
 ```
@@ -60,14 +60,16 @@ git sync
 git create my-tool
 ```
 
-### `git-fork <repo> [account] [directory]`
+### `git-fork <repo> [name] [account] [directory]`
 
 - `<repo>` — `owner/name`, or a GitHub HTTPS / SSH URL.
+- `[name]` — name to use for the fork on GitHub. Defaults to the
+  upstream repo name. Pass `""` to use the default while still
+  specifying `[account]` or `[directory]`.
 - `[account]` — destination owner for the fork. Defaults to the
   authenticated `gh` user. Pass `""` to use the default while still
   specifying `[directory]`.
-- `[directory]` — local directory to clone into. Defaults to the repo
-  name.
+- `[directory]` — local directory to clone into. Defaults to `[name]`.
 
 After forking, `git-fork` applies repo settings to the fork via
 `gh repo edit` (see [Repo settings](#repo-settings) below).
@@ -87,15 +89,24 @@ upstream  https://github.com/brevdev/brev-cli.git (fetch)
 upstream  https://github.com/brevdev/brev-cli.git (push)
 ```
 
-### `git-clone <repo> [account] [directory]`
+Use `[name]` when you want the fork on GitHub to have a different name
+than the upstream — e.g. forking `nvidia/cccl` as `autocuda-cccl`:
+
+```bash
+$ git-fork nvidia/cccl autocuda-cccl
+```
+
+### `git-clone <repo> [name] [account] [directory]`
 
 - `<repo>` — `owner/name`, or a GitHub HTTPS / SSH URL. The upstream
   repo.
+- `[name]` — name of the existing fork on GitHub. Defaults to the
+  upstream repo name. Pass `""` to use the default while still
+  specifying `[account]` or `[directory]`.
 - `[account]` — owner of the existing fork. Defaults to the
   authenticated `gh` user. Pass `""` to use the default while still
   specifying `[directory]`.
-- `[directory]` — local directory to clone into. Defaults to the repo
-  name.
+- `[directory]` — local directory to clone into. Defaults to `[name]`.
 
 Unlike `git-fork`, this does not create a fork or apply repo settings —
 the fork must already exist on GitHub.

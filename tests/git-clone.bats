@@ -43,7 +43,7 @@ gh_log_matches() {
 
 @test "git-clone honours [account] and [directory]" {
   seed_bare_repo "myorg/repo"
-  run "$GIT_CLONE" orig/repo myorg my-dir
+  run "$GIT_CLONE" orig/repo "" myorg my-dir
   [ "$status" -eq 0 ]
 
   [ -d "$WORK/my-dir/.git" ]
@@ -52,6 +52,47 @@ gh_log_matches() {
   [ "$(gh_log_matches '^gh repo view myorg/repo --json name$')" -eq 1 ]
   # With [account] explicit, no gh api user call.
   [ "$(gh_log_matches '^gh api user')" -eq 0 ]
+}
+
+@test "git-clone honours [name] and wires up a renamed fork" {
+  seed_bare_repo "testuser/my-fork"
+  run "$GIT_CLONE" orig/repo my-fork
+  [ "$status" -eq 0 ]
+
+  # Local clone directory defaults to [name].
+  [ -d "$WORK/my-fork/.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.upstream.url)" = "https://github.com/orig/repo.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.fork.url)"     = "https://github.com/testuser/my-fork.git" ]
+  # Existence check used the renamed fork slug.
+  [ "$(gh_log_matches '^gh repo view testuser/my-fork --json name$')" -eq 1 ]
+}
+
+@test "git-clone combines [name] and [account] for a renamed org fork" {
+  seed_bare_repo "myorg/my-fork"
+  run "$GIT_CLONE" orig/repo my-fork myorg
+  [ "$status" -eq 0 ]
+
+  [ -d "$WORK/my-fork/.git" ]
+  [ "$(git -C "$WORK/my-fork" config --get remote.fork.url)" = "https://github.com/myorg/my-fork.git" ]
+  [ "$(gh_log_matches '^gh repo view myorg/my-fork --json name$')" -eq 1 ]
+}
+
+@test "git-clone [name] with explicit [directory] separates the two" {
+  seed_bare_repo "testuser/my-fork"
+  run "$GIT_CLONE" orig/repo my-fork "" custom-dir
+  [ "$status" -eq 0 ]
+
+  [ -d "$WORK/custom-dir/.git" ]
+  [ ! -d "$WORK/my-fork" ]
+  [ "$(git -C "$WORK/custom-dir" config --get remote.fork.url)" = "https://github.com/testuser/my-fork.git" ]
+}
+
+@test "git-clone errors out when the renamed fork does not exist on GitHub" {
+  export STUB_GH_MISSING="testuser/missing-fork"
+  run "$GIT_CLONE" orig/repo missing-fork
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"fork testuser/missing-fork not found"* ]]
+  [ ! -d "$WORK/missing-fork" ]
 }
 
 @test "git-clone errors out when the fork does not exist on GitHub" {
@@ -64,9 +105,9 @@ gh_log_matches() {
 }
 
 @test "git-clone refuses when [account] is the upstream owner" {
-  run "$GIT_CLONE" orig/repo orig
+  run "$GIT_CLONE" orig/repo "" orig
   [ "$status" -eq 1 ]
-  [[ "$output" == *"is the upstream owner"* ]]
+  [[ "$output" == *"is the upstream"* ]]
   # Should reject before any gh or clone call.
   [ "$(gh_log_matches '^gh repo ')" -eq 0 ]
   [ ! -d "$WORK/repo" ]
@@ -93,7 +134,7 @@ gh_log_matches() {
 }
 
 @test "git-clone passes \"\" as [account] to use default" {
-  run "$GIT_CLONE" orig/repo "" custom-dir
+  run "$GIT_CLONE" orig/repo "" "" custom-dir
   [ "$status" -eq 0 ]
   [ -d "$WORK/custom-dir/.git" ]
   [ "$(git -C "$WORK/custom-dir" config --get remote.fork.url)" = "https://github.com/testuser/repo.git" ]

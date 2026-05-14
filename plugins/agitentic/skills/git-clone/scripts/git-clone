@@ -3,14 +3,18 @@
 # two-remote layout, when the fork already exists on GitHub.
 #
 # Usage:
-#   git-clone <repo> [account] [directory]
+#   git-clone <repo> [name] [account] [directory]
 #
 #   <repo>      A GitHub repository as "owner/name", or a GitHub HTTPS / SSH URL.
 #               This is the upstream repository.
+#   [name]      Name of the existing fork on GitHub (and the default local
+#               directory). Defaults to the upstream repo name. Pass "" to use
+#               the default while still specifying [account] or [directory].
 #   [account]   The GitHub user or organization that owns the existing fork.
 #               Defaults to the currently authenticated `gh` user. Pass "" to
 #               use the default while still specifying [directory].
-#   [directory] Local directory to clone into. Defaults to the repo name.
+#   [directory] Local directory to clone into. Defaults to [name] (which itself
+#               defaults to the upstream repo name).
 #
 # Result:
 #   ./<directory>/  cloned from <repo> with two remotes:
@@ -26,13 +30,16 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: git-clone <repo> [account] [directory]
+Usage: git-clone <repo> [name] [account] [directory]
 
   <repo>      "owner/name", or a GitHub https/ssh URL. The upstream repo.
+  [name]      Name of the existing fork. Defaults to the upstream repo name.
+              Pass "" to use the default while still specifying [account] or
+              [directory].
   [account]   Owner of the existing fork. Defaults to the authenticated gh
               user. Pass "" to use the default while still specifying
               [directory].
-  [directory] Local directory to clone into. Defaults to the repo name.
+  [directory] Local directory to clone into. Defaults to [name].
 
 Clones <repo> into ./<directory> with two remotes:
   upstream → original repo (local default branch tracks upstream)
@@ -45,11 +52,12 @@ EOF
 }
 
 case "${1:-}" in -h|--help) usage ;; esac
-(( $# >= 1 && $# <= 3 )) || usage
+(( $# >= 1 && $# <= 4 )) || usage
 
 repo_arg="$1"
-account="${2:-}"
-target_dir="${3:-}"
+fork_name="${2:-}"
+account="${3:-}"
+target_dir="${4:-}"
 
 command -v git >/dev/null 2>&1 || { echo "git-clone: 'git' is required" >&2; exit 1; }
 command -v gh  >/dev/null 2>&1 || { echo "git-clone: 'gh' (GitHub CLI) is required" >&2; exit 1; }
@@ -68,20 +76,24 @@ if [[ "$slug" != */* || "$slug" == */*/* ]]; then
   exit 1
 fi
 upstream_owner="${slug%%/*}"
-repo_name="${slug#*/}"
+upstream_name="${slug#*/}"
+
+if [[ -z "$fork_name" ]]; then
+  fork_name="$upstream_name"
+fi
 
 if [[ -z "$account" ]]; then
   account="$(gh api user --jq .login)"
 fi
 
-if [[ "$account" == "$upstream_owner" ]]; then
-  echo "git-clone: fork account '$account' is the upstream owner; there is no fork to wire up" >&2
+if [[ "$account" == "$upstream_owner" && "$fork_name" == "$upstream_name" ]]; then
+  echo "git-clone: fork ${account}/${fork_name} is the upstream; there is no fork to wire up" >&2
   echo "           (use 'git clone' directly, or 'git-fork' if you meant to create a fork)" >&2
   exit 1
 fi
 
 if [[ -z "$target_dir" ]]; then
-  target_dir="$repo_name"
+  target_dir="$fork_name"
 fi
 
 if [[ -e "$target_dir" ]]; then
@@ -89,17 +101,17 @@ if [[ -e "$target_dir" ]]; then
   exit 1
 fi
 
-echo "==> Verifying fork ${account}/${repo_name} exists"
-if ! gh repo view "${account}/${repo_name}" --json name >/dev/null 2>&1; then
-  echo "git-clone: fork ${account}/${repo_name} not found on GitHub" >&2
-  echo "           (use 'git-fork' to create it, or pass the correct [account])" >&2
+echo "==> Verifying fork ${account}/${fork_name} exists"
+if ! gh repo view "${account}/${fork_name}" --json name >/dev/null 2>&1; then
+  echo "git-clone: fork ${account}/${fork_name} not found on GitHub" >&2
+  echo "           (use 'git-fork' to create it, or pass the correct [name]/[account])" >&2
   exit 1
 fi
 
-upstream_url="https://github.com/${upstream_owner}/${repo_name}.git"
-fork_url="https://github.com/${account}/${repo_name}.git"
+upstream_url="https://github.com/${upstream_owner}/${upstream_name}.git"
+fork_url="https://github.com/${account}/${fork_name}.git"
 
-echo "==> Cloning ${upstream_owner}/${repo_name} into ./${target_dir} (remote: upstream)"
+echo "==> Cloning ${upstream_owner}/${upstream_name} into ./${target_dir} (remote: upstream)"
 git clone -o upstream "$upstream_url" "$target_dir"
 
 echo "==> Adding fork remote → ${fork_url}"

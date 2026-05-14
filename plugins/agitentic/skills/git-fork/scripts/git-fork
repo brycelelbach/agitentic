@@ -3,13 +3,17 @@
 # `upstream` and `fork` remotes, and apply repo settings to the repo.
 #
 # Usage:
-#   git-fork <repo> [account] [directory]
+#   git-fork <repo> [name] [account] [directory]
 #
 #   <repo>      A GitHub repository as "owner/name", or a GitHub HTTPS / SSH URL.
+#   [name]      Name to use for the fork on GitHub (and the default local
+#               directory). Defaults to the upstream repo name. Pass "" to use
+#               the default while still specifying [account] or [directory].
 #   [account]   The GitHub user or organization to fork into. Defaults to the
 #               currently authenticated `gh` user. Pass "" to use the default
 #               while still specifying [directory].
-#   [directory] Local directory to clone into. Defaults to the repo name.
+#   [directory] Local directory to clone into. Defaults to [name] (which itself
+#               defaults to the upstream repo name).
 #
 # Fork repo settings (applied via `gh repo edit`) default to:
 #   delete-branch-on-merge=true
@@ -41,13 +45,16 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: git-fork <repo> [account] [directory]
+Usage: git-fork <repo> [name] [account] [directory]
 
   <repo>      "owner/name", or a GitHub https/ssh URL.
+  [name]      Name to use for the fork. Defaults to the upstream repo name.
+              Pass "" to use the default while still specifying [account] or
+              [directory].
   [account]   Destination owner for the repo. Defaults to the authenticated
               gh user. Pass "" to use the default while still specifying
               [directory].
-  [directory] Local directory to clone into. Defaults to the repo name.
+  [directory] Local directory to clone into. Defaults to [name].
 
 Clones <repo> into ./<directory> with two remotes:
   upstream → original repo (local default branch tracks upstream)
@@ -66,11 +73,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../lib/repo-settings
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../lib/security-settings.sh"
 
 case "${1:-}" in -h|--help) usage ;; esac
-(( $# >= 1 && $# <= 3 )) || usage
+(( $# >= 1 && $# <= 4 )) || usage
 
 repo_arg="$1"
-account="${2:-}"
-target_dir="${3:-}"
+fork_name="${2:-}"
+account="${3:-}"
+target_dir="${4:-}"
 
 command -v git >/dev/null 2>&1 || { echo "git-fork: 'git' is required" >&2; exit 1; }
 command -v gh  >/dev/null 2>&1 || { echo "git-fork: 'gh' (GitHub CLI) is required" >&2; exit 1; }
@@ -89,14 +97,18 @@ if [[ "$slug" != */* || "$slug" == */*/* ]]; then
   exit 1
 fi
 upstream_owner="${slug%%/*}"
-repo_name="${slug#*/}"
+upstream_name="${slug#*/}"
+
+if [[ -z "$fork_name" ]]; then
+  fork_name="$upstream_name"
+fi
 
 if [[ -z "$account" ]]; then
   account="$(gh api user --jq .login)"
 fi
 
 if [[ -z "$target_dir" ]]; then
-  target_dir="$repo_name"
+  target_dir="$fork_name"
 fi
 
 if [[ -e "$target_dir" ]]; then
@@ -104,24 +116,27 @@ if [[ -e "$target_dir" ]]; then
   exit 1
 fi
 
-upstream_url="https://github.com/${upstream_owner}/${repo_name}.git"
-fork_url="https://github.com/${account}/${repo_name}.git"
+upstream_url="https://github.com/${upstream_owner}/${upstream_name}.git"
+fork_url="https://github.com/${account}/${fork_name}.git"
 
-echo "==> Cloning ${upstream_owner}/${repo_name} into ./${target_dir} (remote: upstream)"
+echo "==> Cloning ${upstream_owner}/${upstream_name} into ./${target_dir} (remote: upstream)"
 git clone -o upstream "$upstream_url" "$target_dir"
 
-if [[ "$account" == "$upstream_owner" ]]; then
-  echo "==> Skipping fork: account '$account' is the upstream owner"
+if [[ "$account" == "$upstream_owner" && "$fork_name" == "$upstream_name" ]]; then
+  echo "==> Skipping fork: ${account}/${fork_name} is the upstream"
 else
-  echo "==> Forking ${upstream_owner}/${repo_name} → ${account}/${repo_name}"
+  echo "==> Forking ${upstream_owner}/${upstream_name} → ${account}/${fork_name}"
   authed_user="$(gh api user --jq .login)"
-  if [[ "$account" == "$authed_user" ]]; then
-    gh repo fork "${upstream_owner}/${repo_name}" --clone=false >/dev/null
-  else
-    gh repo fork "${upstream_owner}/${repo_name}" --clone=false --org "$account" >/dev/null
+  fork_args=("${upstream_owner}/${upstream_name}" --clone=false)
+  if [[ "$account" != "$authed_user" ]]; then
+    fork_args+=(--org "$account")
   fi
-  agitentic_apply_repo_settings "${account}/${repo_name}"
-  agitentic_apply_security_settings "${account}/${repo_name}"
+  if [[ "$fork_name" != "$upstream_name" ]]; then
+    fork_args+=(--fork-name "$fork_name")
+  fi
+  gh repo fork "${fork_args[@]}" >/dev/null
+  agitentic_apply_repo_settings "${account}/${fork_name}"
+  agitentic_apply_security_settings "${account}/${fork_name}"
 fi
 
 echo "==> Adding fork remote → ${fork_url}"

@@ -4,7 +4,7 @@
 #
 #   gh api user --jq .login
 #   gh repo create <slug> --public
-#   gh repo fork   <slug> --clone=false [--org <owner>]
+#   gh repo fork   <slug> --clone=false [--org <owner>] [--fork-name <name>]
 #   gh repo edit   <slug> [--key=value ...]
 #   gh repo view   <slug> --json name
 #
@@ -103,20 +103,22 @@ case "${1:-}" in
         ;;
 
       fork)
-        # gh repo fork <slug> --clone=false [--org <owner>]
+        # gh repo fork <slug> --clone=false [--org <owner>] [--fork-name <name>]
         upstream_slug="${1:-}"; shift || true
         [[ -n "$upstream_slug" ]] || die "repo fork: missing slug"
         org=""
+        fork_name=""
         while (( $# )); do
           case "$1" in
             --org) org="${2:-}"; shift 2 ;;
+            --fork-name) fork_name="${2:-}"; shift 2 ;;
             --clone*) shift ;;  # --clone=false or --clone (ignored by stub)
             *) shift ;;
           esac
         done
         [[ -n "${STUB_GH_BARE_ROOT:-}" ]] || die "STUB_GH_BARE_ROOT not set"
         [[ -z "$org" ]] && org="${STUB_GH_USER:-testuser}"
-        fork_name="${upstream_slug#*/}"
+        [[ -z "$fork_name" ]] && fork_name="${upstream_slug#*/}"
         fork_slug="$org/$fork_name"
         upstream_bare="$STUB_GH_BARE_ROOT/$upstream_slug.git"
         fork_bare="$STUB_GH_BARE_ROOT/$fork_slug.git"

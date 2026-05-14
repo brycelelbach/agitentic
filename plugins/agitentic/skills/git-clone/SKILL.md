@@ -40,17 +40,21 @@ Do **not** use this skill when:
 Run the bundled script:
 
 ```
-scripts/git-clone <repo> [account] [directory]
+scripts/git-clone <repo> [name] [account] [directory]
 ```
 
 - `<repo>` (required) — the upstream repository. Accepts `owner/name` or
   any GitHub HTTPS / SSH URL (`https://github.com/owner/name`,
   `git@github.com:owner/name.git`, etc.).
+- `[name]` (optional) — the name of the existing fork on GitHub (and
+  the default local directory). Defaults to the upstream repo name.
+  Pass `""` to use the default while still specifying `[account]` or
+  `[directory]`.
 - `[account]` (optional) — the owner of the existing fork. Defaults to
   the currently authenticated `gh` user. Pass `""` to use the default
   while still specifying `[directory]`.
 - `[directory]` (optional) — local directory to clone into. Defaults to
-  the repo name.
+  `[name]`.
 
 The script:
 
@@ -61,8 +65,8 @@ The script:
 3. Adds a `fork` remote pointing at `<account>/<name>`.
 
 The script refuses to overwrite an existing `./<directory>`, and refuses
-to run if `<account>` equals the upstream owner (there's no fork to wire
-up in that case).
+to run if `<account>/<name>` matches the upstream (there's no fork to
+wire up in that case).
 
 ## Examples
 
@@ -74,16 +78,22 @@ Run, from the directory where the user wants the clone to land:
 scripts/git-clone brevdev/brev-cli
 ```
 
+User: "Clone nvidia/cccl — my fork is named autocuda-cccl"
+
+```
+scripts/git-clone nvidia/cccl autocuda-cccl
+```
+
 User: "Clone brevdev/brev-cli — my fork lives under the acme org"
 
 ```
-scripts/git-clone brevdev/brev-cli acme
+scripts/git-clone brevdev/brev-cli "" acme
 ```
 
 User: "Clone brevdev/brev-cli into ~/work/brev (my fork under my user)"
 
 ```
-cd ~/work && scripts/git-clone brevdev/brev-cli "" brev
+cd ~/work && scripts/git-clone brevdev/brev-cli "" "" brev
 ```
 
 After the script returns, show the user `git -C <directory> remote -v`
